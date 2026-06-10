@@ -9,7 +9,6 @@ st.set_page_config(page_title="System Alertów i Kosztów CHMURA", page_icon="�
 
 # ==========================================
 # 🔑 KONFIGURACJA HASŁA DOSTĘPU
-# Możesz zmienić tekst w cudzysłowie na swoje własne hasło
 HASLO_DOSTEPU = "123"
 # ==========================================
 
@@ -31,7 +30,6 @@ if not st.session_state["zalogowano"]:
         else:
             st.error("❌ Niepoprawne hasło! Spróbuj ponownie.")
             
-    # Zatrzymujemy działanie reszty programu, jeśli użytkownik nie jest zalogowany
     st.stop()
 
 
@@ -60,12 +58,12 @@ def polacz_z_google_sheets():
 
 sheet = polacz_z_google_sheets()
 
-# Przycisk do wylogowania na samej górze panelu głównego
+# Przycisk do wylogowania
 col_title, col_logout = st.columns([4, 1])
 with col_title:
     st.title("🚨 System Rejestracji Kosztów")
 with col_logout:
-    st.write("") # mały odstęp pionowy
+    st.write("") 
     if st.button("🔒 Wyloguj"):
         st.session_state["zalogowano"] = False
         st.rerun()
@@ -110,7 +108,7 @@ if submit_button:
     if not imie or not nazwisko or not ostateczny_projekt or koszt == 0:
         st.error("❌ Błąd! Pola Imię, Nazwisko, Projekt oraz Koszt nie mogą być puste.")
     elif sheet is None:
-        st.error("❌ Brak połączenia z bazą danych.")
+        st.error("❌ Brak połączenia z baza danych.")
     else:
         zeit_now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         data_str = data_dotyczy.strftime("%Y-%m-%d")
@@ -134,41 +132,81 @@ if sheet is not None:
         if dane_z_chmury:
             df = pd.DataFrame(dane_z_chmury)
             
-            # --- SEKCJA 1: SUMOWANIE DLA PROJEKTÓW ---
-            st.subheader("📊 Podsumowanie Finansowe Projektów")
-            
+            # Standaryzacja nazw kolumn
             kolumna_koszt = "Koszt całkowity (zł)" 
             kolumna_projekt = "Nazwa Projektu (np. Auchan)"
             kolumna_typ = "Typ wpisu"
+            kolumna_data = "Za jaki dzień jest kara / dopłata?" # Dopasuj jeśli w nagłówku jest inaczej
             
             if "Nazwa Projektu" in df.columns: kolumna_projekt = "Nazwa Projektu"
             elif "Projekt" in df.columns: kolumna_projekt = "Projekt"
-            elif "Nazwa Projektu (np. Auchan)" in df.columns: kolumna_projekt = "Nazwa Projektu (np. Auchan)"
                 
             if "Koszt" in df.columns: kolumna_koszt = "Koszt"
             elif "Koszt całkowity" in df.columns: kolumna_koszt = "Koszt całkowity"
-            elif "Koszt całkowity (zł)" in df.columns: kolumna_koszt = "Koszt całkowity (zł)"
                 
             if "Typ" in df.columns: kolumna_typ = "Typ"
             elif "Typ wpisu" in df.columns: kolumna_typ = "Typ wpisu"
+                
+            if "Data" in df.columns: kolumna_data = "Data"
+            elif "Za jaki dzień jest kara / dopłata?" in df.columns: kolumna_data = "Za jaki dzień jest kara / dopłata?"
 
+            # Konwersja kosztów na liczby
             df[kolumna_koszt] = pd.to_numeric(df[kolumna_koszt], errors='coerce').fillna(0)
             
-            tabela_podsumowania = df.groupby([kolumna_projekt, kolumna_typ])[kolumna_koszt].sum().unstack(fill_value=0)
+            # Konwersja dat na format czytelny dla Pythona i wyciągnięcie Miesiąca
+            df['Miesiąc_Data'] = pd.to_datetime(df[kolumna_data], errors='coerce')
+            df['Rok-Miesiąc'] = df['Miesiąc_Data'].dt.strftime('%Y-%m')
             
-            if "Kara" not in tabela_podsumowania.columns:
-                tabela_podsumowania["Kara"] = 0.0
-            if "Dopłata" not in tabela_podsumowania.columns:
-                tabela_podsumowania["Dopłata"] = 0.0
+            st.subheader("📊 Analiza Finansowa i Filtry")
+            
+            # --- PANEL FILTRÓW (OBOK SIEBIE) ---
+            f_col1, f_col2 = st.columns(2)
+            
+            with f_col1:
+                lista_projektow = ["Wszystkie"] + sorted(list(df[kolumna_projekt].unique()))
+                wybrany_projekt = st.selectbox("🔍 Filtruj według Projektu", lista_projektow)
                 
-            tabela_podsumowania = tabela_podsumowania[["Kara", "Dopłata"]]
-            tabela_podsumowania["Suma Łączna (zł)"] = tabela_podsumowania["Kara"] + tabela_podsumowania["Dopłata"]
+            with f_col2:
+                # Pobieramy unikalne miesiące (usuwamy puste i sortujemy)
+                miesiace = sorted(list(df['Rok-Miesiąc'].dropna().unique()), reverse=True)
+                lista_miesiecy = ["Wszystkie miesiące"] + miesiace
+                wybrany_miesiac = st.selectbox("📅 Filtruj według Miesiąca", lista_miesiecy)
             
-            st.dataframe(tabela_podsumowania.style.format("{:.2f} zł"), use_container_width=True)
+            # --- LOGIKA FILTROWANIA ---
+            df_filtrowane = df.copy()
+            if wybrany_projekt != "Wszystkie":
+                df_filtrowane = df_filtrowane[df_filtrowane[columna_projekt] == wybrany_projekt]
+            if wybrany_miesiac != "Wszystkie miesiące":
+                df_filtrowane = df_filtrowane[df_filtrowane['Rok-Miesiąc'] == wybrany_miesiac]
+                
+            # --- GENEROWANIE TABELI PO PRZETRAWIEŃIU FILTRÓW ---
+            if not df_filtrowane.empty:
+                tabela_podsumowania = df_filtrowane.groupby([columna_projekt, kolumna_typ])[kolumna_koszt].sum().unstack(fill_value=0)
+                
+                if "Kara" not in tabela_podsumowania.columns:
+                    tabela_podsumowania["Kara"] = 0.0
+                if "Dopłata" not in tabela_podsumowania.columns:
+                    tabela_podsumowania["Dopłata"] = 0.0
+                    
+                tabela_podsumowania = tabela_podsumowania[["Kara", "Dopłata"]]
+                tabela_podsumowania["Suma Łączna (zł)"] = tabela_podsumowania["Kara"] + tabela_podsumowania["Dopłata"]
+                
+                # Wyświetlenie przefiltrowanej tabeli
+                st.write(f"Zestawienie dla: **{wybrany_projekt}** | Okres: **{wybrany_miesiac}**")
+                st.dataframe(tabela_podsumowania.style.format("{:.2f} zł"), use_container_width=True)
+                
+                # --- TRZECIE USPRAWNIENIE: WYKRES SŁUPKOWY ---
+                st.write("📈 **Wykres kosztów (Kary vs Dopłaty):**")
+                # Do wykresu bierzemy tylko kolumny Kara i Dopłata (bez kolumny Suma)
+                wykres_dane = tabela_podsumowania[["Kara", "Dopłata"]]
+                st.bar_chart(wykres_dane)
+                
+            else:
+                st.info("Brak danych spełniających wybrane kryteria filtrów.")
             
             # --- SEKCJA 2: OSTATNIE WPISY ---
             st.write("---")
-            st.subheader("📋 Ostatnie 10 wpisów w bazie")
+            st.subheader("📋 Ostatnie 10 wpisów w bazie (ogółem)")
             st.dataframe(df.tail(10), use_container_width=True)
             
         else:
