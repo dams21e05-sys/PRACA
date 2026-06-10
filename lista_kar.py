@@ -45,7 +45,16 @@ with st.form("formularz_kosztow", clear_on_submit=True):
     with col2:
         nazwisko = st.text_input("Nazwisko").strip()
         
-    projekt = st.text_input("Nazwa Projektu (np. Auchan)").strip()
+    # --- NOWA LISTA ROZWIJANA DLA PROJEKTÓW ---
+    projekt_wybor = st.selectbox(
+        "Wybierz Projekt",
+        ["Auchan", "Orlen Paczka", "Agata Meble", "Inny (Wpisz ręcznie)"]
+    )
+    
+    # Jeśli użytkownik wybierze "Inny", pojawi się dodatkowe pole tekstowe
+    projekt_reczny = ""
+    if projekt_wybor == "Inny (Wpisz ręcznie)":
+        projekt_reczny = st.text_input("Wpisz nazwę nowego projektu").strip()
     
     typ_wpisu = st.selectbox(
         "Typ wpisu", 
@@ -59,7 +68,10 @@ with st.form("formularz_kosztow", clear_on_submit=True):
 
 # --- LOGIKA ZAPISU ---
 if submit_button:
-    if not imie or not nazwisko or not projekt or koszt == 0:
+    # Ustalamy ostateczną nazwę projektu na podstawie wyboru użytkownika
+    ostateczny_projekt = projekt_reczny if projekt_wybor == "Inny (Wpisz ręcznie)" else projekt_wybor
+
+    if not imie or not nazwisko or not ostateczny_projekt or koszt == 0:
         st.error("❌ Błąd! Pola Imię, Nazwisko, Projekt oraz Koszt nie mogą być puste.")
     elif sheet is None:
         st.error("❌ Brak połączenia z bazą danych.")
@@ -68,11 +80,11 @@ if submit_button:
         data_str = data_dotyczy.strftime("%Y-%m-%d")
         powod_uwagi = uwagi if uwagi else "Brak uwag"
         
-        nowy_wiersz = [zeit_now, data_str, imie, nazwisko, projekt, typ_wpisu, koszt, powod_uwagi]
+        nowy_wiersz = [zeit_now, data_str, imie, nazwisko, ostateczny_projekt, typ_wpisu, koszt, powod_uwagi]
         
         try:
             sheet.append_row(nowy_wiersz)
-            st.success(f"✅ Zapisano w chmurze Google! (Dzień: {data_str})")
+            st.success(f"✅ Zapisano w chmurze Google! (Projekt: {ostateczny_projekt}, Dzień: {data_str})")
             st.balloons()
         except Exception as e:
             st.error(f"❌ Błąd podczas zapisu danych: {e}")
@@ -89,46 +101,9 @@ if sheet is not None:
             # --- SEKCJA 1: SUMOWANIE DLA PROJEKTÓW ---
             st.subheader("📊 Podsumowanie Finansowe Projektów")
             
-            # Upewniamy się, że kolumna z kosztem traktowana jest jako liczba
-            # Jeśli w nagłówku kolumny w Google Sheets masz dokładnie "Koszt całkowity (zł)"
             kolumna_koszt = "Koszt całkowity (zł)" 
             kolumna_projekt = "Nazwa Projektu (np. Auchan)"
             kolumna_typ = "Typ wpisu"
             
-            # Dynamiczne dopasowanie nazw, jeśli w Google Sheets nagłówki są krótsze (np. "Projekt", "Koszt")
             if "Nazwa Projektu" in df.columns: kolumna_projekt = "Nazwa Projektu"
             elif "Projekt" in df.columns: kolumna_projekt = "Projekt"
-                
-            if "Koszt" in df.columns: kolumna_koszt = "Koszt"
-            elif "Koszt całkowity" in df.columns: kolumna_koszt = "Koszt całkowity"
-                
-            if "Typ" in df.columns: kolumna_typ = "Typ"
-
-            df[kolumna_koszt] = pd.to_numeric(df[kolumna_koszt], errors='coerce').fillna(0)
-            
-            # Tworzymy tabelę przestawną: Projekty w wierszach, Typ wpisu (Kara/Dopłata) w kolumnach
-            tabela_podsumowania = df.groupby([kolumna_projekt, kolumna_typ])[kolumna_koszt].sum().unstack(fill_value=0)
-            
-            # Upewniamy się, że obie kolumny istnieją w podsumowaniu, nawet jeśli nikt jeszcze ich nie wpisał
-            if "Kara" not in tabela_podsumowania.columns:
-                tabela_podsumowania["Kara"] = 0.0
-            if "Dopłata" not in tabela_podsumowania.columns:
-                tabela_podsumowania["Dopłata"] = 0.0
-                
-            # Porządkujemy kolejność kolumn i dodajemy sumaryczny bilans (np. Kara + Dopłata lub różnica, zależy jak na to patrzysz)
-            tabela_podsumowania = tabela_podsumowania[["Kara", "Dopłata"]]
-            tabela_podsumowania["Suma Łączna (zł)"] = tabela_podsumowania["Kara"] + tabela_podsumowania["Dopłata"]
-            
-            # Formatowanie wyświetlania tabeli (dodanie końcówki "zł")
-            st.dataframe(tabela_podsumowania.style.format("{:.2f} zł"), use_container_width=True)
-            
-            # --- SEKCJA 2: OSTATNIE WPISY ---
-            st.write("---")
-            st.subheader("📋 Ostatnie 10 wpisów w bazie")
-            st.dataframe(df.tail(10), use_container_width=True)
-            
-        else:
-            st.info("Ta zakładka jest obecnie pusta w Google Sheets. Dodaj pierwszy wpis przez formularz powyżej!")
-            
-    except Exception as e:
-        st.warning("Tabela podsumowania za chwilę wyliczy się automatycznie (kliknij F5, jeśli dane nie wskoczyły).")
