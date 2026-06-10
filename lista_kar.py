@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import gspread
 from datetime import datetime
-import json
 
 # Konfiguracja strony
 st.set_page_config(page_title="System Alertów i Kosztów CHMURA", page_icon="🚨", layout="centered")
@@ -12,7 +11,8 @@ def polacz_z_google_sheets():
     try:
         # SPRAWDZAMY CZY JESTEŚMY W CHMURZE STREAMLIT
         if "gcp_service_account" in st.secrets:
-            credentials_info = json.loads(st.secrets["gcp_service_account"])
+            # Natywny format Streamlit - automatycznie tworzy czysty słownik z sekcji sekretów
+            credentials_info = dict(st.secrets["gcp_service_account"])
             client = gspread.service_account_from_dict(credentials_info)
         else:
             # LOKALNIE NA KOMPUTERZE (Z start.bat)
