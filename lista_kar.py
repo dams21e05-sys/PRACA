@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import gspread
 from datetime import datetime
+import json
 
 # Konfiguracja strony
 st.set_page_config(page_title="System Alertów i Kosztów CHMURA", page_icon="🚨", layout="centered")
@@ -9,12 +10,18 @@ st.set_page_config(page_title="System Alertów i Kosztów CHMURA", page_icon="�
 # Funkcja łącząca się z Arkuszami Google
 def polacz_z_google_sheets():
     try:
-        client = gspread.service_account(filename="creds.json")
+        # SPRAWDZAMY CZY JESTEŚMY W CHMURZE STREAMLIT
+        if "gcp_service_account" in st.secrets:
+            credentials_info = json.loads(st.secrets["gcp_service_account"])
+            client = gspread.service_account_from_dict(credentials_info)
+        else:
+            # LOKALNIE NA KOMPUTERZE (Z start.bat)
+            client = gspread.service_account(filename="creds.json")
         
-        # Otwieramy główny plik za pomocą jego nazwy z góry ekranu
+        # Otwieramy główny plik za pomocą jego nazwy
         plik_google = client.open("BUSYNDCBYDGOSZCZ")
         
-        # Wskazujemy konkretną zakładkę z dołu ekranu
+        # Wskazujemy konkretną zakładkę
         sheet = plik_google.worksheet("System_Kar_i_Kosztow")
         return sheet
         
@@ -37,7 +44,6 @@ st.write("Każdy wpis zostanie natychmiast zapisany w chmurze i zsynchronizowany
 with st.form("formularz_kosztow", clear_on_submit=True):
     st.subheader("📝 Nowe zgłoszenie")
     
-    # NOWOŚĆ: Wybór dnia z kalendarza
     data_dotyczy = st.date_input("Za jaki dzień jest kara / dopłata?", value=datetime.now())
     
     col1, col2 = st.columns(2)
@@ -65,13 +71,10 @@ if submit_button:
     elif sheet is None:
         st.error("❌ Brak połączenia z bazą danych.")
     else:
-        # Formatujemy automatyczny czas wpisu i datę z kalendarza
         zeit_now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         data_str = data_dotyczy.strftime("%Y-%m-%d")
-        
         powod_uwagi = uwagi if uwagi else "Brak uwag"
         
-        # DODANO data_str jako drugi element w wierszu:
         nowy_wiersz = [zeit_now, data_str, imie, nazwisko, projekt, typ_wpisu, koszt, powod_uwagi]
         
         try:
