@@ -107,3 +107,37 @@ if sheet is not None:
             
             if "Nazwa Projektu" in df.columns: kolumna_projekt = "Nazwa Projektu"
             elif "Projekt" in df.columns: kolumna_projekt = "Projekt"
+            elif "Nazwa Projektu (np. Auchan)" in df.columns: kolumna_projekt = "Nazwa Projektu (np. Auchan)"
+                
+            if "Koszt" in df.columns: kolumna_koszt = "Koszt"
+            elif "Koszt całkowity" in df.columns: kolumna_koszt = "Koszt całkowity"
+            elif "Koszt całkowity (zł)" in df.columns: kolumna_koszt = "Koszt całkowity (zł)"
+                
+            if "Typ" in df.columns: kolumna_typ = "Typ"
+            elif "Typ wpisu" in df.columns: kolumna_typ = "Typ wpisu"
+
+            df[kolumna_koszt] = pd.to_numeric(df[kolumna_koszt], errors='coerce').fillna(0)
+            
+            # Grupowanie danych
+            tabela_podsumowania = df.groupby([kolumna_projekt, kolumna_typ])[kolumna_koszt].sum().unstack(fill_value=0)
+            
+            if "Kara" not in tabela_podsumowania.columns:
+                tabela_podsumowania["Kara"] = 0.0
+            if "Dopłata" not in tabela_podsumowania.columns:
+                tabela_podsumowania["Dopłata"] = 0.0
+                
+            tabela_podsumowania = tabela_podsumowania[["Kara", "Dopłata"]]
+            tabela_podsumowania["Suma Łączna (zł)"] = tabela_podsumowania["Kara"] + tabela_podsumowania["Dopłata"]
+            
+            st.dataframe(tabela_podsumowania.style.format("{:.2f} zł"), use_container_width=True)
+            
+            # --- SEKCJA 2: OSTATNIE WPISY ---
+            st.write("---")
+            st.subheader("📋 Ostatnie 10 wpisów w bazie")
+            st.dataframe(df.tail(10), use_container_width=True)
+            
+        else:
+            st.info("Ta zakładka jest obecnie pusta w Google Sheets. Dodaj pierwszy wpis przez formularz powyżej!")
+            
+    except Exception as e:
+        st.warning("Tabela podsumowania za chwilę wyliczy się automatycznie (kliknij F5, jeśli dane nie wskoczyły).")
