@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import gspread
+import json
 from datetime import datetime
 
 # Konfiguracja strony
@@ -11,8 +12,15 @@ def polacz_z_google_sheets():
     try:
         # SPRAWDZAMY CZY JESTEŚMY W CHMURZE STREAMLIT
         if "gcp_service_account" in st.secrets:
-            # Natywny format Streamlit - automatycznie tworzy czysty słownik z sekcji sekretów
-            credentials_info = dict(st.secrets["gcp_service_account"])
+            dane_sekretow = st.secrets["gcp_service_account"]
+            
+            # Jeśli sekrety zostały wklejone jako tekst (JSON) w potrójnych cudzysłowach
+            if isinstance(dane_sekretow, str):
+                credentials_info = json.loads(dane_sekretow)
+            else:
+                # Jeśli zostały wklejone jako format tabeli TOML
+                credentials_info = dict(dane_sekretow)
+                
             client = gspread.service_account_from_dict(credentials_info)
         else:
             # LOKALNIE NA KOMPUTERZE (Z start.bat)
@@ -25,11 +33,14 @@ def polacz_z_google_sheets():
         sheet = plik_google.worksheet("System_Kar_i_Kosztow")
         return sheet
         
+    except json.JSONDecodeError:
+        st.error("❌ Błąd dekodowania JSON w sekretach. Sprawdź, czy na samym początku lub końcu wklejonego klucza w Advanced Settings nie ma przypadkowych znaków (np. kropek).")
+        return None
     except gspread.exceptions.SpreadsheetNotFound:
         st.error("❌ Nie znaleziono pliku o nazwie 'BUSYNDCBYDGOSZCZ'. Sprawdź, czy na pewno udostępniłeś ten główny plik mailowi z pliku creds.json!")
         return None
     except gspread.exceptions.WorksheetNotFound:
-        st.error("❌ W pliku znaleziono połączenie, ale nie ma w nim zakładki o nazwie 'System_Kar_i_Kosztow'. Sprawdź, czy nie ma tam ukrytej spacji!")
+        st.error("❌ W pliku znaleziono połączenie, ale nie ma w nim zakładki o nazwie 'System_Kar_i_Kosztow'.")
         return None
     except Exception as e:
         st.error(f"❌ Błąd połączenia z Google Sheets: {e}")
