@@ -1,3 +1,6 @@
 streamlit
-gspread
 pandas
+gspread
+anthropic
+scikit-learn
+numpy
