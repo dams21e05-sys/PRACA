@@ -10,38 +10,20 @@ st.set_page_config(page_title="System Alertów i Kosztów CHMURA", page_icon="�
 # Funkcja łącząca się z Arkuszami Google
 def polacz_z_google_sheets():
     try:
-        # SPRAWDZAMY CZY JESTEŚMY W CHMURZE STREAMLIT
         if "gcp_service_account" in st.secrets:
             dane_sekretow = st.secrets["gcp_service_account"]
-            
-            # Jeśli sekrety zostały wklejone jako tekst (JSON) w potrójnych cudzysłowach
             if isinstance(dane_sekretow, str):
                 credentials_info = json.loads(dane_sekretow)
             else:
-                # Jeśli zostały wklejone jako format tabeli TOML
                 credentials_info = dict(dane_sekretow)
-                
             client = gspread.service_account_from_dict(credentials_info)
         else:
-            # LOKALNIE NA KOMPUTERZE (Z start.bat)
             client = gspread.service_account(filename="creds.json")
         
-        # Otwieramy główny plik za pomocą jego nazwy
         plik_google = client.open("BUSYNDCBYDGOSZCZ")
-        
-        # Wskazujemy konkretną zakładkę
         sheet = plik_google.worksheet("System_Kar_i_Kosztow")
         return sheet
         
-    except json.JSONDecodeError:
-        st.error("❌ Błąd dekodowania JSON w sekretach. Sprawdź, czy na samym początku lub końcu wklejonego klucza w Advanced Settings nie ma przypadkowych znaków (np. kropek).")
-        return None
-    except gspread.exceptions.SpreadsheetNotFound:
-        st.error("❌ Nie znaleziono pliku o nazwie 'BUSYNDCBYDGOSZCZ'. Sprawdź, czy na pewno udostępniłeś ten główny plik mailowi z pliku creds.json!")
-        return None
-    except gspread.exceptions.WorksheetNotFound:
-        st.error("❌ W pliku znaleziono połączenie, ale nie ma w nim zakładki o nazwie 'System_Kar_i_Kosztow'.")
-        return None
     except Exception as e:
         st.error(f"❌ Błąd połączenia z Google Sheets: {e}")
         return None
@@ -95,16 +77,58 @@ if submit_button:
         except Exception as e:
             st.error(f"❌ Błąd podczas zapisu danych: {e}")
 
-# --- PODGLĄD NA ŻYWO Z CHMURY ---
+# --- POBIERANIE I ANALIZA DANYCH ---
 st.write("---")
-st.subheader("📊 Podgląd bazy danych w chmurze na żywo")
 if sheet is not None:
     try:
         dane_z_chmury = sheet.get_all_records()
+        
         if dane_z_chmury:
-            df_podglad = pd.DataFrame(dane_z_chmury)
-            st.dataframe(df_podglad.tail(10), use_container_width=True)
+            df = pd.DataFrame(dane_z_chmury)
+            
+            # --- SEKCJA 1: SUMOWANIE DLA PROJEKTÓW ---
+            st.subheader("📊 Podsumowanie Finansowe Projektów")
+            
+            # Upewniamy się, że kolumna z kosztem traktowana jest jako liczba
+            # Jeśli w nagłówku kolumny w Google Sheets masz dokładnie "Koszt całkowity (zł)"
+            kolumna_koszt = "Koszt całkowity (zł)" 
+            kolumna_projekt = "Nazwa Projektu (np. Auchan)"
+            kolumna_typ = "Typ wpisu"
+            
+            # Dynamiczne dopasowanie nazw, jeśli w Google Sheets nagłówki są krótsze (np. "Projekt", "Koszt")
+            if "Nazwa Projektu" in df.columns: kolumna_projekt = "Nazwa Projektu"
+            elif "Projekt" in df.columns: kolumna_projekt = "Projekt"
+                
+            if "Koszt" in df.columns: kolumna_koszt = "Koszt"
+            elif "Koszt całkowity" in df.columns: kolumna_koszt = "Koszt całkowity"
+                
+            if "Typ" in df.columns: kolumna_typ = "Typ"
+
+            df[kolumna_koszt] = pd.to_numeric(df[kolumna_koszt], errors='coerce').fillna(0)
+            
+            # Tworzymy tabelę przestawną: Projekty w wierszach, Typ wpisu (Kara/Dopłata) w kolumnach
+            tabela_podsumowania = df.groupby([kolumna_projekt, kolumna_typ])[kolumna_koszt].sum().unstack(fill_value=0)
+            
+            # Upewniamy się, że obie kolumny istnieją w podsumowaniu, nawet jeśli nikt jeszcze ich nie wpisał
+            if "Kara" not in tabela_podsumowania.columns:
+                tabela_podsumowania["Kara"] = 0.0
+            if "Dopłata" not in tabela_podsumowania.columns:
+                tabela_podsumowania["Dopłata"] = 0.0
+                
+            # Porządkujemy kolejność kolumn i dodajemy sumaryczny bilans (np. Kara + Dopłata lub różnica, zależy jak na to patrzysz)
+            tabela_podsumowania = tabela_podsumowania[["Kara", "Dopłata"]]
+            tabela_podsumowania["Suma Łączna (zł)"] = tabela_podsumowania["Kara"] + tabela_podsumowania["Dopłata"]
+            
+            # Formatowanie wyświetlania tabeli (dodanie końcówki "zł")
+            st.dataframe(tabela_podsumowania.style.format("{:.2f} zł"), use_container_width=True)
+            
+            # --- SEKCJA 2: OSTATNIE WPISY ---
+            st.write("---")
+            st.subheader("📋 Ostatnie 10 wpisów w bazie")
+            st.dataframe(df.tail(10), use_container_width=True)
+            
         else:
             st.info("Ta zakładka jest obecnie pusta w Google Sheets. Dodaj pierwszy wpis przez formularz powyżej!")
+            
     except Exception as e:
-        st.warning("Tabela za chwilę załaduje się poprawnie (kliknij F5 jeśli podgląd nie wskoczył).")
+        st.warning("Tabela podsumowania za chwilę wyliczy się automatycznie (kliknij F5, jeśli dane nie wskoczyły).")
