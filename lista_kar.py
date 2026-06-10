@@ -7,6 +7,36 @@ from datetime import datetime
 # Konfiguracja strony
 st.set_page_config(page_title="System Alertów i Kosztów CHMURA", page_icon="🚨", layout="centered")
 
+# ==========================================
+# 🔑 KONFIGURACJA HASŁA DOSTĘPU
+# Możesz zmienić tekst w cudzysłowie na swoje własne hasło
+HASLO_DOSTEPU = "123"
+# ==========================================
+
+# --- SYSTEM LOGOWANIA ---
+if "zalogowano" not in st.session_state:
+    st.session_state["zalogowano"] = False
+
+if not st.session_state["zalogowano"]:
+    st.title("🔐 Autoryzacja")
+    st.write("Ta aplikacja jest zabezpieczona. Podaj hasło firmowe, aby uzyskać dostęp.")
+    
+    wpisane_haslo = st.text_input("Wpisz hasło", type="password")
+    przycisk_zaloguj = st.button("Zaloguj się")
+    
+    if przycisk_zaloguj:
+        if wpisane_haslo == HASLO_DOSTEPU:
+            st.session_state["zalogowano"] = True
+            st.rerun()
+        else:
+            st.error("❌ Niepoprawne hasło! Spróbuj ponownie.")
+            
+    # Zatrzymujemy działanie reszty programu, jeśli użytkownik nie jest zalogowany
+    st.stop()
+
+
+# --- RESZTA KODU (DOSTĘPNA TYLKO PO ZALOGOWANIU) ---
+
 # Funkcja łącząca się z Arkuszami Google
 def polacz_z_google_sheets():
     try:
@@ -30,7 +60,16 @@ def polacz_z_google_sheets():
 
 sheet = polacz_z_google_sheets()
 
-st.title("🚨 System Rejestracji Kosztów (Chmura Google)")
+# Przycisk do wylogowania na samej górze panelu głównego
+col_title, col_logout = st.columns([4, 1])
+with col_title:
+    st.title("🚨 System Rejestracji Kosztów")
+with col_logout:
+    st.write("") # mały odstęp pionowy
+    if st.button("🔒 Wyloguj"):
+        st.session_state["zalogowano"] = False
+        st.rerun()
+
 st.write("Każdy wpis zostanie natychmiast zapisany w chmurze i zsynchronizowany na wszystkich urządzeniach.")
 
 # --- FORMULARZ WPISYWANIA DANYCH ---
@@ -45,13 +84,11 @@ with st.form("formularz_kosztow", clear_on_submit=True):
     with col2:
         nazwisko = st.text_input("Nazwisko").strip()
         
-    # --- NOWA LISTA ROZWIJANA DLA PROJEKTÓW ---
     projekt_wybor = st.selectbox(
         "Wybierz Projekt",
         ["Auchan", "Orlen Paczka", "Agata Meble", "Inny (Wpisz ręcznie)"]
     )
     
-    # Jeśli użytkownik wybierze "Inny", pojawi się dodatkowe pole tekstowe
     projekt_reczny = ""
     if projekt_wybor == "Inny (Wpisz ręcznie)":
         projekt_reczny = st.text_input("Wpisz nazwę nowego projektu").strip()
@@ -68,7 +105,6 @@ with st.form("formularz_kosztow", clear_on_submit=True):
 
 # --- LOGIKA ZAPISU ---
 if submit_button:
-    # Ustalamy ostateczną nazwę projektu na podstawie wyboru użytkownika
     ostateczny_projekt = projekt_reczny if projekt_wybor == "Inny (Wpisz ręcznie)" else projekt_wybor
 
     if not imie or not nazwisko or not ostateczny_projekt or koszt == 0:
@@ -118,7 +154,6 @@ if sheet is not None:
 
             df[kolumna_koszt] = pd.to_numeric(df[kolumna_koszt], errors='coerce').fillna(0)
             
-            # Grupowanie danych
             tabela_podsumowania = df.groupby([kolumna_projekt, kolumna_typ])[kolumna_koszt].sum().unstack(fill_value=0)
             
             if "Kara" not in tabela_podsumowania.columns:
@@ -140,4 +175,4 @@ if sheet is not None:
             st.info("Ta zakładka jest obecnie pusta w Google Sheets. Dodaj pierwszy wpis przez formularz powyżej!")
             
     except Exception as e:
-        st.warning("Tabela podsumowania za chwilę wyliczy się automatycznie (kliknij F5, jeśli dane nie wskoczyły).")
+        st.warning("Tabela podsumowania za chwilę wyliczy się automatycznie.")
